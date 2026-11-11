@@ -1,13 +1,14 @@
 package com.example
 
-import com.fasterxml.jackson.databind.JsonNode
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.mapper
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import io.ktor.http.encodeURLParameter
-import org.json.JSONObject
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 /**
  * Universal Dual-Engine Metadata Client (Cinemeta + TMDB).
+ * Fully built with kotlinx.serialization and pure Kotlin Multiplatform (KMP).
  *
  * ARCHITECTURAL ADVANTAGES:
  * 1. Cinemeta Engine (Free, Zero API Keys, Public):
@@ -29,13 +30,94 @@ object TmdbUtils {
 
     fun hasTmdbKey(): Boolean = !tmdbApiKey.isNullOrBlank()
 
+    @Serializable
+    data class CinemetaSearchResponse(
+        val metas: List<CinemetaSearchItem>? = null
+    )
+
+    @Serializable
     data class CinemetaSearchItem(
         val id: String, // e.g. "tt0499549"
-        val name: String,
-        val year: Int?,
-        val poster: String?,
-        val description: String?,
-        val genres: List<String>?
+        val name: String? = null,
+        val year: String? = null,
+        val poster: String? = null,
+        val description: String? = null,
+        val genres: List<String>? = null
+    ) {
+        val parsedYear: Int?
+            get() = year?.take(4)?.toIntOrNull()
+    }
+
+    @Serializable
+    data class CinemetaMetaResponse(
+        val meta: CinemetaMetaItem? = null
+    )
+
+    @Serializable
+    data class CinemetaMetaItem(
+        val id: String? = null,
+        val name: String? = null,
+        val type: String? = null,
+        val poster: String? = null,
+        val background: String? = null,
+        val logo: String? = null,
+        val description: String? = null,
+        val genres: List<String>? = null,
+        val releaseInfo: String? = null,
+        val videos: List<CinemetaVideo>? = null
+    )
+
+    @Serializable
+    data class CinemetaVideo(
+        val id: String? = null,
+        val name: String? = null,
+        val title: String? = null,
+        val season: Int? = null,
+        val episode: Int? = null,
+        val number: Int? = null,
+        val thumbnail: String? = null,
+        val overview: String? = null,
+        val description: String? = null,
+        val released: String? = null,
+        val firstAired: String? = null
+    )
+
+    @Serializable
+    data class TmdbSearchResponse(
+        val results: List<TmdbSearchResult>? = null
+    )
+
+    @Serializable
+    data class TmdbSearchResult(
+        val id: Int? = null
+    )
+
+    @Serializable
+    data class TmdbFindResponse(
+        @SerialName("movie_results") val movieResults: List<TmdbSearchResult>? = null,
+        @SerialName("tv_results") val tvResults: List<TmdbSearchResult>? = null
+    )
+
+    @Serializable
+    data class TmdbExternalIdsResponse(
+        @SerialName("external_ids") val externalIds: TmdbExternalIds? = null,
+        @SerialName("imdb_id") val imdbId: String? = null
+    )
+
+    @Serializable
+    data class TmdbExternalIds(
+        @SerialName("imdb_id") val imdbId: String? = null
+    )
+
+    @Serializable
+    data class TmdbImagesResponse(
+        val logos: List<TmdbLogo>? = null
+    )
+
+    @Serializable
+    data class TmdbLogo(
+        @SerialName("file_path") val filePath: String? = null,
+        @SerialName("iso_639_1") val iso6391: String? = null
     )
 
     data class UniversalMetadata(
@@ -48,7 +130,7 @@ object TmdbUtils {
         val logoUrl: String? = null,
         val plot: String? = null,
         val tags: List<String>? = null,
-        val cinemetaNode: JsonNode? = null
+        val cinemetaVideos: List<CinemetaVideo> = emptyList()
     )
 
     /**
@@ -62,34 +144,9 @@ object TmdbUtils {
         val url = "$CINEMETA_API/catalog/$type/top/search=$encoded.json"
 
         return try {
-            val text = app.get(url, timeout = 5).text
-            val json = JSONObject(text)
-            val metas = json.optJSONArray("metas") ?: return null
-            if (metas.length() == 0) return null
-
-            val first = metas.getJSONObject(0)
-            val imdbId = first.optString("id")
-            if (imdbId.isBlank()) return null
-
-            val year = first.optString("year").takeIf { it.isNotBlank() }?.toIntOrNull()
-            val poster = first.optString("poster").takeIf { it.isNotBlank() }
-            val desc = first.optString("description").takeIf { it.isNotBlank() }
-            val genres = mutableListOf<String>()
-            val genresArr = first.optJSONArray("genres")
-            if (genresArr != null) {
-                for (i in 0 until genresArr.length()) {
-                    genres.add(genresArr.getString(i))
-                }
-            }
-
-            CinemetaSearchItem(
-                id = imdbId,
-                name = first.optString("name", title),
-                year = year,
-                poster = poster,
-                description = desc,
-                genres = if (genres.isNotEmpty()) genres else null
-            )
+            val resp = app.get(url, timeout = 5).parsedSafe<CinemetaSearchResponse>()
+                ?: tryParseJson<CinemetaSearchResponse>(app.get(url, timeout = 5).text)
+            resp?.metas?.firstOrNull { it.id.isNotBlank() }
         } catch (_: Exception) {
             null
         }
@@ -99,14 +156,13 @@ object TmdbUtils {
      * Fetches high-resolution metadata, episode stills, and cast from Cinemeta by IMDb ID.
      * Zero API keys required.
      */
-    suspend fun fetchCinemetaMeta(imdbId: String?, isTvSeries: Boolean): JsonNode? {
+    suspend fun fetchCinemetaMeta(imdbId: String?, isTvSeries: Boolean): CinemetaMetaItem? {
         if (imdbId.isNullOrBlank()) return null
         val type = if (isTvSeries) "series" else "movie"
         val url = "$CINEMETA_API/meta/$type/$imdbId.json"
 
         return try {
-            val text = app.get(url, timeout = 5).text
-            mapper.readTree(text)["meta"]
+            app.get(url, timeout = 5).parsedSafe<CinemetaMetaResponse>()?.meta
         } catch (_: Exception) {
             null
         }
@@ -133,12 +189,7 @@ object TmdbUtils {
         val url = "$TMDB_API/$endpoint?api_key=$apiKey&query=$queryParam$yearParam&include_adult=false"
 
         return try {
-            val resp = app.get(url, timeout = 5).text
-            val json = JSONObject(resp)
-            val results = json.optJSONArray("results") ?: return null
-            if (results.length() == 0) return null
-
-            results.getJSONObject(0).optInt("id", -1).takeIf { it != -1 }
+            app.get(url, timeout = 5).parsedSafe<TmdbSearchResponse>()?.results?.firstOrNull()?.id
         } catch (_: Exception) {
             null
         }
@@ -151,17 +202,8 @@ object TmdbUtils {
         if (apiKey.isNullOrBlank() || imdbId.isBlank()) return null
         val url = "$TMDB_API/find/$imdbId?api_key=$apiKey&external_source=imdb_id"
         return try {
-            val resp = app.get(url, timeout = 5).text
-            val json = JSONObject(resp)
-            val movieResults = json.optJSONArray("movie_results")
-            if (movieResults != null && movieResults.length() > 0) {
-                return movieResults.getJSONObject(0).optInt("id", -1).takeIf { it != -1 }
-            }
-            val tvResults = json.optJSONArray("tv_results")
-            if (tvResults != null && tvResults.length() > 0) {
-                return tvResults.getJSONObject(0).optInt("id", -1).takeIf { it != -1 }
-            }
-            null
+            val res = app.get(url, timeout = 5).parsedSafe<TmdbFindResponse>()
+            res?.movieResults?.firstOrNull()?.id ?: res?.tvResults?.firstOrNull()?.id
         } catch (_: Exception) {
             null
         }
@@ -180,8 +222,8 @@ object TmdbUtils {
         val url = "$TMDB_API/$kind/$tmdbId?api_key=$apiKey&append_to_response=external_ids"
 
         return try {
-            val resp = app.get(url, timeout = 5).text
-            JSONObject(resp).optJSONObject("external_ids")?.optString("imdb_id")?.takeIf { it.isNotBlank() }
+            val res = app.get(url, timeout = 5).parsedSafe<TmdbExternalIdsResponse>()
+            (res?.externalIds?.imdbId ?: res?.imdbId)?.takeIf { it.isNotBlank() }
         } catch (_: Exception) {
             null
         }
@@ -201,22 +243,11 @@ object TmdbUtils {
         val url = "$TMDB_API/$kind/$tmdbId/images?api_key=$apiKey"
 
         return try {
-            val resp = app.get(url, timeout = 5).text
-            val logos = JSONObject(resp).optJSONArray("logos") ?: return null
-            if (logos.length() == 0) return null
+            val logos = app.get(url, timeout = 5).parsedSafe<TmdbImagesResponse>()?.logos ?: return null
+            val match = logos.firstOrNull { it.iso6391?.equals(langCode, ignoreCase = true) == true && !it.filePath.isNullOrBlank() }
+                ?: logos.firstOrNull { !it.filePath.isNullOrBlank() }
 
-            var selectedPath: String? = null
-            for (i in 0 until logos.length()) {
-                val logo = logos.getJSONObject(i)
-                val path = logo.optString("file_path")
-                val lang = logo.optString("iso_639_1").lowercase()
-                if (path.isNotBlank() && (lang == langCode || selectedPath == null)) {
-                    selectedPath = path
-                    if (lang == langCode) break
-                }
-            }
-
-            selectedPath?.let { "https://image.tmdb.org/t/p/w500$it" }
+            match?.filePath?.let { "https://image.tmdb.org/t/p/w500$it" }
         } catch (_: Exception) {
             null
         }
@@ -258,7 +289,7 @@ object TmdbUtils {
         }
 
         // 3. Fetch Full Cinemeta Node by IMDb ID for 4K artwork & episode stills (Zero keys needed)
-        val cinemetaNode = if (!resolvedImdbId.isNullOrBlank()) {
+        val cinemetaMeta = if (!resolvedImdbId.isNullOrBlank()) {
             fetchCinemetaMeta(resolvedImdbId, isTvSeries)
         } else null
 
@@ -267,22 +298,22 @@ object TmdbUtils {
             fetchLogoUrl(resolvedTmdbId, isTvSeries, apiKey = apiKey)
         } else null
 
-        val poster = cinemetaNode?.get("poster")?.asText() ?: cinemetaSearch?.poster
-        val background = cinemetaNode?.get("background")?.asText()
-        val plot = cinemetaNode?.get("overview")?.asText() ?: cinemetaSearch?.description
-        val genres = cinemetaNode?.get("genres")?.map { it.asText() } ?: cinemetaSearch?.genres
+        val poster = cinemetaMeta?.poster ?: cinemetaSearch?.poster
+        val background = cinemetaMeta?.background
+        val plot = cinemetaMeta?.description ?: cinemetaSearch?.description
+        val genres = cinemetaMeta?.genres ?: cinemetaSearch?.genres
 
         return UniversalMetadata(
             tmdbId = resolvedTmdbId,
             imdbId = resolvedImdbId,
             title = cinemetaSearch?.name ?: CommonUtils.cleanTitle(rawTitle, keepSeason = false, keepYear = false),
-            year = cinemetaSearch?.year ?: year,
+            year = cinemetaSearch?.parsedYear ?: year,
             posterUrl = poster,
             backgroundUrl = background,
             logoUrl = logoUrl,
             plot = plot,
             tags = genres,
-            cinemetaNode = cinemetaNode
+            cinemetaVideos = cinemetaMeta?.videos ?: emptyList()
         )
     }
 }

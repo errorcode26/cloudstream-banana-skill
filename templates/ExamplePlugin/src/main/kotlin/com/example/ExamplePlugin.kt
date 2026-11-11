@@ -3,7 +3,8 @@ package com.example
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.appcompat.app.AppCompatActivity
-import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
 import com.lagradost.cloudstream3.app
@@ -79,9 +80,10 @@ class ExamplePlugin : Plugin() {
             }
         }
 
+        @Serializable
         data class DomainConfig(
-            @param:JsonProperty("primary") val primaryDomain: String? = null,
-            @param:JsonProperty("backup") val backupDomain: String? = null,
+            @SerialName("primary") val primaryDomain: String? = null,
+            @SerialName("backup") val backupDomain: String? = null,
         )
     }
 }

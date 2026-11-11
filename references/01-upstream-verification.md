@@ -158,3 +158,69 @@ When facing an unfamiliar player architecture, dynamic stream encryption, or maj
 * **Community Repositories**: Proactively inspect working implementations across verified open-source community repositories (such as [`recloudstream/extensions`](https://github.com/recloudstream/extensions), [`recloudstream/TestPlugins`](https://github.com/recloudstream/TestPlugins), or curated community extension indexes).
 * **Official Core Checks**: Inspect [`recloudstream/cloudstream`](https://github.com/recloudstream/cloudstream) commit history and issues if core SDK models or network behaviors change.
 * **Strict On-Demand Trigger**: This is executed **only when required** (e.g., compile errors or unsolved player schemes) to ensure normal plugin generation remains fast, lean, and non-blocking.
+
+---
+
+## 7. Modern Kotlin Multiplatform (KMP) & Cross-Platform Support
+
+Modern CloudStream 3 / 4 is built on pure Kotlin Multiplatform. The upstream team strongly recommends that all streaming plugins target pure KMP so that desktop (JVM) and mobile platforms run identical binaries without Android fragmentation.
+
+### 7.1 The `isCrossPlatform = true` Flag
+In `build.gradle.kts`:
+```kotlin
+cloudstream {
+    // Enable cross-platform compilation to produce both .cs3 (Android Dex) and .jar (JVM/Desktop)
+    isCrossPlatform = true
+    requiresResources = false
+}
+```
+
+### 7.2 The `:ensureJarCompatibility` Verification Task
+When `isCrossPlatform = true` is enabled, Gradle registers and runs `EnsureJarCompatibilityTask` immediately after `:compilePluginJar`.
+* It runs `jdeps --print-module-deps <Plugin>.jar` and checks for any `android.*` framework references.
+* If any Android SDK imports (`android.content.*`, `android.view.*`, `android.util.*`) leak into standard streaming code, `:ensureJarCompatibility` will immediately fail the build:
+  ```text
+  The cross-platform JAR file contains Android imports! This will cause compatibility issues.
+  Remove 'isCrossPlatform = true' or remove the Android imports.
+  ```
+* Standard streaming plugins MUST use pure KMP dependencies (Kotlin standard library, `NiceHttp`, `Jsoup`, `kotlinx.serialization`).
+
+---
+
+## 8. Official Production Index Generation (`./gradlew makePluginsJson`)
+
+Upstream CloudStream requires a repository index (`plugins.json`) containing cryptographic checksums, file sizes, and binary URLs for each plugin.
+
+### 8.1 Never Write `plugins.json` or Hashes Manually
+Manually crafting `plugins.json` is strictly forbidden by upstream developers:
+* Manual SHA-256 calculation frequently causes `fileHash` mismatches, leading CloudStream clients to reject downloads with "Checksum verification failed".
+* Cross-platform plugins require `jarFileSize`, `jarUrl`, and `jarHash` in addition to `.cs3` entries.
+
+### 8.2 The Official Gradle Automation
+Always use the official Gradle task provided by `recloudstream/gradle`:
+```bash
+./gradlew makePluginsJson
+```
+This task:
+1. Compiles the Android Dex `.cs3` package via `:make`.
+2. Compiles the cross-platform JVM `.jar` via `:compilePluginJar` (when `isCrossPlatform = true`).
+3. Runs `:ensureJarCompatibility` to verify no platform-specific leaks.
+4. Executes `:writeCacheEntry` to compute true SHA-256 digests (`"sha256-" + hex`) and exact byte lengths.
+5. Executes `:makePluginsJson` to aggregate all subproject metadata into `build/plugins.json`.
+```json
+[
+  {
+    "url": "https://raw.githubusercontent.com/user/repo/builds/ExamplePlugin.cs3",
+    "status": 1,
+    "version": 1,
+    "name": "ExamplePlugin",
+    "internalName": "ExamplePlugin",
+    "authors": ["PluginAuthor"],
+    "fileSize": 14523,
+    "fileHash": "sha256-a1b2c3d4...",
+    "jarFileSize": 18230,
+    "jarUrl": "https://raw.githubusercontent.com/user/repo/builds/ExamplePlugin.jar",
+    "jarHash": "sha256-e5f6g7h8..."
+  }
+]
+```

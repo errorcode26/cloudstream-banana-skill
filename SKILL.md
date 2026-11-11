@@ -241,11 +241,14 @@ Implement the 4 mandatory `MainAPI` methods in `<PluginName>Provider.kt`:
    * For video: Differentiate between `TvType.Movie` and `TvType.TvSeries` using `CommonUtils.isTvSeries()`.
    * **Contextual Season Hierarchy Traversal**: For TV series, scan headings (`h1..h6`) in document order to track `currentSeason` (ignoring multi-season spans like `Season 1-3`), and tag subsequent episode links/archives with `currentSeason`. This prevents child links that lack season numbers (`"Episode 1"`) from naively collapsing into `Season 1`.
    * **Explicit Batch/Zip Rejection**: Filter out any links matching `"Batch"`, `"Zip"`, or `".zip"`.
-   * **Cinemeta Episode Mapping**: Query Cinemeta by IMDb ID (`https://v3-cinemeta.strem.io/meta/$type/$imdbId.json`), parse with `mapper.readTree`, and map `videos` array to `newEpisode` by `Pair(season, episode)` to enrich with canonical names, overviews, thumbnails, and air dates. (See [06. Metadata](references/06-metadata-enrichment.md)).
+   * **Cinemeta Episode Mapping**: Query Cinemeta by IMDb ID (`https://v3-cinemeta.strem.io/meta/$type/$imdbId.json`), deserialize cleanly into `@Serializable` models, and map the `videos` array to `newEpisode` by `Pair(season, episode)` to enrich with canonical names, overviews, thumbnails, and air dates. (See [06. Metadata](references/06-metadata-enrichment.md)).
    * For games/manga: Return `TvType.CustomMedia` with chapter/ROM identifiers (instructs CloudStream to suppress the built-in ExoPlayer so the custom Dialog takes over in `loadLinks`). Note that `build.gradle.kts` uses `tvTypes = listOf("Others")` for the UI filter chip.
 4. **`loadLinks(data, isCasting, subtitleCallback, callback)`**:
    * For video: Extract stream URLs or multi-hop shortener endpoints, filter out non-streamable archives, and concurrently resolve with `loadExtractor(url, subtitleCallback, callback)`. (See [05. Streams](references/05-streams-and-extractors.md)).
    * For games/manga: Launch the interactive `Dialog` via `CommonActivity.activity` and return `true`.
+5. **JSON Scraping & API Hydration (`kotlinx.serialization` ONLY)**:
+   * **Strict Mandate**: All API calls, hydration states, and JSON payloads MUST be modeled as `@Serializable` data classes and parsed using `app.get().parsedSafe<T>()`, `AppUtils.parseJson<T>()`, or `AppUtils.tryParseJson<T>()`.
+   * **Banned**: Never use untyped `org.json.JSONObject` or Android-specific JSON parsers. Always rely on pure Kotlin Multiplatform serialization.
 
 ---
 
@@ -302,17 +305,25 @@ Implement the 4 mandatory `MainAPI` methods in `<PluginName>Provider.kt`:
    * CloudStream on Android compares the integer `version` field in `manifest.json`.
    * If you make fixes or changes, recompile `:make`, but leave `version = 1`, CloudStream assumes the plugin is already installed and will **not** reload or update the `.dex` file on your device.
    * **ALWAYS increment `version = X + 1` in `build.gradle.kts` on every single bug fix or test iteration before running `:make`**.
-3. Compile the `.cs3` binary:
+3. Compile the `.cs3` and `.jar` binaries:
    ```bash
    ./gradlew :<PluginName>:make
    ```
    *(On Windows PowerShell: `.\gradlew.bat :<PluginName>:make`)*
-4. Host the repository locally for Wi-Fi testing on an Android device or Android TV:
+4. **Automated Production Repository Indexing (`./gradlew makePluginsJson`)**:
+   * **Never handcraft `plugins.json` or calculate SHA-256 digests manually**.
+   * Run the official Gradle automation:
+     ```bash
+     ./gradlew makePluginsJson
+     ```
+     *(On Windows PowerShell: `.\gradlew.bat makePluginsJson`)*
+   * Automatically computes `fileHash = sha256(cs3)` and `fileSize = cs3.length()` as well as cross-platform `jarHash` and `jarFileSize`, generating `build/plugins.json` safely.
+5. Host the repository locally for Wi-Fi testing on an Android device or Android TV:
    ```bash
    python scripts/serve_cs3.py
    ```
    *(Uses the bundled script `scripts/serve_cs3.py` which auto-generates `repo.json` and enforces no-cache headers)*
-5. Add the local repo URL (e.g. `http://<WIFI_IP>:8080/repo.json`) into CloudStream settings.
+6. Add the local repo URL (e.g. `http://<WIFI_IP>:8080/repo.json`) into CloudStream settings.
 
 ---
 
@@ -326,7 +337,7 @@ Implement the 4 mandatory `MainAPI` methods in `<PluginName>Provider.kt`:
 | **Session & Cryptography** | [04. Web Session Management, Challenge Resolution & Crypto Guide](references/04-session-management-and-crypto.md) |
 | **Streams & Extractors** | [05. Streams, Protocols & Extractor Engineering Guide](references/05-streams-and-extractors.md) |
 | **Metadata & Cinemeta** | [06. Metadata Enrichment (Cinemeta, TMDB & Trakt)](references/06-metadata-enrichment.md) |
-| **CloudStream Pitfalls** | [07. The 15 Fatal CloudStream Pitfalls](references/07-fatal-pitfalls.md) |
+| **CloudStream Pitfalls** | [07. The 16 Fatal CloudStream Pitfalls](references/07-fatal-pitfalls.md) |
 | **Settings, UI & TV Remote** | [08. Custom Plugin Settings, BottomSheets & TV Compatibility](references/08-plugin-settings-and-ui.md) |
 | **Mega-Aggregator Architecture** | [09. Mega-Aggregator Architecture (Multi-Source Orchestration)](references/09-aggregator-architecture.md) |
 | **Comics, Manga & Readers** | [10. Comic, Manga & Document Reader Architecture](references/10-comic-manga-plugins.md) |
@@ -354,3 +365,6 @@ Implement the 4 mandatory `MainAPI` methods in `<PluginName>Provider.kt`:
 15. **On-Demand Open-Source & Upstream Inspection**: When exotic video players, novel encryptions, or SDK signature changes occur, inspect official (`recloudstream/cloudstream`, `recloudstream/extensions`) or community repos for updated templates and unpackers — only when required.
 16. **High-Signal, Non-Annoying Progress Updates**: Always report findings, test results, and current tasks in concise, bulleted updates without generating repetitive, verbose essay walls.
 17. **Developer Maintenance & Upstream Grounding**: Ground all plugin logic in the pulled CloudStream repository; design providers with clear `mainUrl` declarations so domain rotations can be easily updated by the developer.
+18. **Pure KMP Dependencies & Cross-Platform (`isCrossPlatform = true`)**: Standard streaming providers must enable `isCrossPlatform = true` in `build.gradle.kts` and rely solely on pure Kotlin Multiplatform dependencies. Standard providers must never import Android SDK frameworks (`android.content.*`, `android.view.*`, `android.util.Base64`). Gradle task `:ensureJarCompatibility` automatically audits the compiled `.jar` via `jdeps` to guarantee compatibility across Android, desktop, and JVM targets.
+19. **Mandatory `kotlinx.serialization` (Strict Ban on `org.json.JSONObject`)**: All network scraping, API endpoints, and metadata parsers must declare `@Serializable` data classes and use CloudStream's native helpers (`AppUtils.parseJson<T>()`, `AppUtils.tryParseJson<T>()`, `app.get().parsedSafe<T>()`, and `myObject.toJson()`). Untyped `org.json.JSONObject` is strictly forbidden due to runtime fragility, boilerplate, and platform lock-in.
+20. **Automated `plugins.json` Indexing (`makePluginsJson`)**: Never manually author `plugins.json` or write arbitrary `fileHash` / `jarHash` values. Always execute `./gradlew makePluginsJson` to ensure mathematically verified SHA-256 digests (`sha256-<hex>`) and exact byte counts are recorded.

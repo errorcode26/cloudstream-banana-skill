@@ -291,26 +291,48 @@ val wpPosts = app.get("$mainUrl/wp-json/wp/v2/posts?per_page=20").parsedSafe<Lis
 
 ---
 
-## 3. High-Speed Direct Deserialization (`parsedSafe<T>()`)
+## 3. High-Speed Direct Deserialization (`kotlinx.serialization` & `parsedSafe<T>()`)
 
-Traditional HTML DOM parsing with dozens of `.select()` calls is slow and fragile. When an endpoint or hydration tag returns JSON, map directly into strongly-typed Kotlin data classes:
+Traditional HTML DOM parsing with dozens of `.select()` calls is slow and fragile. When an endpoint or hydration tag returns JSON, map directly into strongly-typed Kotlin data classes using `kotlinx.serialization`.
 
-### The `parsedSafe<T>` Recipe:
+> [!IMPORTANT]
+> **Strict Upstream Directive: `kotlinx.serialization` ONLY. Never Use `org.json.JSONObject`**:
+> Upstream CloudStream core developers strongly mandate `kotlinx.serialization` across all plugins:
+> 1. `org.json.JSONObject` is untyped, error-prone, verbose, and Android-platform-locked (blocks pure KMP / desktop JAR compatibility).
+> 2. Always annotate models with `@Serializable` and use `com.lagradost.cloudstream3.utils.AppUtils.parseJson<T>()`, `AppUtils.tryParseJson<T>()`, or `app.get().parsedSafe<T>()`.
+> 3. To encode an object to JSON, use `myObject.toJson()` from `AppUtils`.
+
+### The Modern KMP Serialization Recipe:
 ```kotlin
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class SearchResponseRoot(
-    val results: List<MediaItem>?,
-    val totalPages: Int?
+    val results: List<MediaItem>? = null,
+    @SerialName("total_pages") val totalPages: Int? = null
 )
 
+@Serializable
 data class MediaItem(
     val id: String,
     val title: String,
-    val posterPath: String?,
-    val releaseYear: Int?
+    @SerialName("poster_path") val posterPath: String? = null,
+    @SerialName("release_year") val releaseYear: Int? = null
 )
 
-// One-line high-speed fetch & parse:
+// 1. One-line high-speed network fetch & deserialization:
 val data = app.get("$mainUrl/api/search?q=$query").parsedSafe<SearchResponseRoot>()
+
+// 2. Or parsing raw JSON strings safely:
+val directParsed = tryParseJson<SearchResponseRoot>(jsonString)
+
+// 3. Serializing back to JSON:
+val jsonString = data?.toJson()
+
 val searchCards = data?.results?.map { item ->
     newMovieSearchResponse(item.title, item.id, TvType.Movie) {
         this.posterUrl = item.posterPath

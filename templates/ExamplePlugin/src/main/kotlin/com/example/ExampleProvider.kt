@@ -124,7 +124,7 @@ class ExampleProvider : MainAPI() {
         val finalYear = meta.year ?: year
 
         if (isTvSeries) {
-            val cinemetaVideos = meta.cinemetaNode?.get("videos")?.toList() ?: emptyList()
+            val cinemetaVideos = meta.cinemetaVideos
 
             val episodes = episodeElements.mapNotNull { ep ->
                 val epHref = fixUrlNull(ep.attr("href")) ?: return@mapNotNull null
@@ -140,14 +140,14 @@ class ExampleProvider : MainAPI() {
                 val seasonNum = extractedSeason ?: Regex("""(?i)(?:s|season)\s*(\d+)""").find(epText)?.groupValues?.get(1)?.toIntOrNull() ?: 1
 
                 val epMeta = cinemetaVideos.firstOrNull {
-                    it["season"]?.asInt() == seasonNum && (it["episode"]?.asInt() == epNum || it["number"]?.asInt() == epNum)
+                    it.season == seasonNum && (it.episode == epNum || it.number == epNum)
                 }
-                val epName = epMeta?.get("name")?.asText()
-                    ?: epMeta?.get("title")?.asText()?.takeIf { it.isNotBlank() }
+                val epName = epMeta?.name
+                    ?: epMeta?.title?.takeIf { it.isNotBlank() }
                     ?: CommonUtils.cleanTitle(epText).ifBlank { "Episode $epNum" }
-                val epThumb = epMeta?.get("thumbnail")?.asText()?.takeIf { it.isNotBlank() }
-                val epDesc = epMeta?.get("overview")?.asText() ?: epMeta?.get("description")?.asText()
-                val epAired = epMeta?.get("released")?.asText() ?: epMeta?.get("firstAired")?.asText()
+                val epThumb = epMeta?.thumbnail?.takeIf { it.isNotBlank() }
+                val epDesc = epMeta?.overview ?: epMeta?.description
+                val epAired = epMeta?.released ?: epMeta?.firstAired
 
                 newEpisode(epHref) {
                     this.name = epName

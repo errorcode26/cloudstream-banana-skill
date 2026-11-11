@@ -314,17 +314,19 @@ fun sha256Bytes(input: ByteArray): ByteArray {
 }
 ```
 
-### JWT Expiration Parser (Zero-Library):
+### JWT Expiration Parser (Zero-Library & KMP-Safe):
 Extract the `exp` timestamp from a JWT without adding heavy third-party JWT libraries:
 ```kotlin
+@kotlinx.serialization.Serializable
+private data class JwtPayload(val exp: Long? = null)
+
 fun decodeJwtExpiry(token: String): Long {
     return try {
         val payload = token.split(".").getOrNull(1) ?: return 0L
         val padded = payload.replace("-", "+").replace("_", "/")
             .let { it + "=".repeat((4 - it.length % 4) % 4) }
-        val json = android.util.Base64.decode(padded, android.util.Base64.DEFAULT)
-            .toString(Charsets.UTF_8)
-        org.json.JSONObject(json).optLong("exp", 0L)
+        val json = java.util.Base64.getDecoder().decode(padded).toString(Charsets.UTF_8)
+        com.lagradost.cloudstream3.utils.AppUtils.tryParseJson<JwtPayload>(json)?.exp ?: 0L
     } catch (_: Exception) {
         0L
     }

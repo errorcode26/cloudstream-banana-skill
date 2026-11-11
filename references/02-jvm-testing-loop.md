@@ -123,7 +123,6 @@ dependencies {
     // 3. Serializers & Coroutines required by CloudStream MainAPIKt
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
-    testImplementation("org.json:json:20231013")
 }
 
 android {

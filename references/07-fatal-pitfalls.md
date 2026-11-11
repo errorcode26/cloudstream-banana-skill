@@ -1,14 +1,18 @@
-# 07. The 15 Fatal CloudStream Pitfalls ("Never Do This")
+# 07. The 16 Fatal CloudStream Pitfalls ("Never Do This")
 
 > **CRITICAL DIRECTIVE**:
-> These 15 mistakes are the most frequent reasons why plugins fail to appear, crash the CloudStream app, fail to update, freeze playback, or silently corrupt the repository index. Memorize them before building or releasing any plugin.
+> These 16 mistakes are the most frequent reasons why plugins fail to appear, crash the CloudStream app, fail to update, freeze playback, or silently corrupt the repository index. Memorize them before building or releasing any plugin.
 
 ---
 
-## 1. `fileHash` in `plugins.json` (Fatal App Crash)
-* **What happens**: CloudStream throws `kotlinx.serialization.SerializationException: Unknown key 'fileHash'`.
-* **Consequence**: The app silently rejects the entire repository, and **none** of your plugins will show up.
-* **Golden Rule**: **NEVER** include `fileHash` in `plugins.json`.
+## 1. Manual `plugins.json` Creation & Bogus `fileHash` (Fatal Verification Failures)
+* **What happens**: Developers or AI agents attempt to handcraft `plugins.json` or write arbitrary SHA-256 strings for `fileHash`.
+* **Consequence**: CloudStream validates package integrity via `DigestPair.parse(plugin.fileHash)`. A malformed hash format, missing `"sha256-"` prefix, or mismatched SHA-256 checksum causes the Android client to reject plugin downloads with fatal checksum errors or silently discard the entire repository.
+* **Golden Rule**: **NEVER** write `plugins.json` or calculate `fileHash` / `jarHash` by hand. Always run the official Gradle automation:
+  ```bash
+  ./gradlew makePluginsJson
+  ```
+  This automatically compiles the `.cs3` and `.jar` binaries, calculates exact byte sizes, generates true `"sha256-<hex>"` digests, and creates a 100% compliant `build/plugins.json`.
 
 ---
 
@@ -111,3 +115,13 @@
 * **What happens**: The agent stalls and pesters the developer with intake questionnaires (authors, TMDB keys, categories, settings preferences) before even verifying if the site can yield streamable links.
 * **Consequence**: The developer wastes time answering configuration details, only for the agent to discover minutes later that the site is dead, bot-blocked, or unplayable.
 * **Golden Rule**: Invert the workflow. Execute Phase 1 feasibility probing and upstream extractor cross-checking FIRST. Only confirm smart defaults after the source is 100% proven viable.
+
+---
+
+## 16. Using `org.json.JSONObject` or Android Framework Imports (Breaks KMP & Cross-Platform)
+* **What happens**: Writing untyped `JSONObject` scraping code or importing `android.content.*`, `android.view.*`, or `android.util.Base64` into standard streaming providers.
+* **Consequence**:
+  1. `org.json.JSONObject` is untyped, generates verbose, error-prone boilerplate, throws unchecked runtime exceptions on missing fields, and is tied to the Android runtime.
+  2. With modern CloudStream targeting Kotlin Multiplatform (`isCrossPlatform = true`), Gradle task `:ensureJarCompatibility` inspects bytecode with `jdeps`. Any Android SDK framework dependency causes an immediate build failure:
+     `The cross-platform JAR file contains Android imports! Remove 'isCrossPlatform = true' or remove the Android imports.`
+* **Golden Rule**: Always use `kotlinx.serialization` with `@Serializable` data classes, `AppUtils.parseJson<T>()`, `AppUtils.tryParseJson<T>()`, and `app.get().parsedSafe<T>()`. Standard streaming plugins must rely solely on pure Kotlin Multiplatform (KMP) dependencies.
