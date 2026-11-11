@@ -1,0 +1,27 @@
+# Build and temporary files
+.gradle/
+.kotlin/
+build/
+bin/
+out/
+
+# Android / Local environment
+local.properties
+*.apk
+*.dex
+*.cs3
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Python cache & temporary scratchpads
+__pycache__/
+*.pyc
+scratch/
+_served_repo/
+
+# OS artifacts
+Thumbs.db
+.DS_Store
