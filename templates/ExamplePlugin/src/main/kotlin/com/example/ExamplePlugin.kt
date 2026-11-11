@@ -1,8 +1,6 @@
 package com.example
 
 import android.content.Context
-import android.content.ContextWrapper
-import androidx.appcompat.app.AppCompatActivity
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey

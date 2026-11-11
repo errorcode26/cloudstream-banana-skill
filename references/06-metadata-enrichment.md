@@ -24,21 +24,25 @@ Cinemeta provides a public catalog search endpoint that resolves raw movie and s
 * **Series Search**: `https://v3-cinemeta.strem.io/catalog/series/top/search={query}.json`
 
 ```kotlin
+@Serializable
+data class CinemetaSearchResponse(val metas: List<CinemetaSearchItem>? = null)
+
+@Serializable
+data class CinemetaSearchItem(
+    val id: String,
+    val name: String? = null,
+    val year: String? = null,
+    val poster: String? = null,
+    val description: String? = null
+)
+
 suspend fun searchCinemeta(title: String, isTvSeries: Boolean): CinemetaSearchItem? {
     val type = if (isTvSeries) "series" else "movie"
     val clean = CommonUtils.cleanTitle(title, keepSeason = false, keepYear = false)
     val url = "https://v3-cinemeta.strem.io/catalog/$type/top/search=${clean.encodeURLParameter()}.json"
 
-    val json = JSONObject(app.get(url, timeout = 5).text)
-    val first = json.optJSONArray("metas")?.optJSONObject(0) ?: return null
-
-    return CinemetaSearchItem(
-        id = first.getString("id"), // Canonical IMDb ID (e.g. "tt0499549")
-        name = first.optString("name"),
-        year = first.optString("year").toIntOrNull(),
-        poster = first.optString("poster"),
-        description = first.optString("description")
-    )
+    val res = app.get(url, timeout = 5).parsedSafe<CinemetaSearchResponse>()
+    return res?.metas?.firstOrNull { it.id.isNotBlank() }
 }
 ```
 
@@ -51,12 +55,39 @@ Once an IMDb ID is known, Cinemeta returns high-resolution backdrops, localized 
 * **Endpoint**: `https://v3-cinemeta.strem.io/meta/{series|movie}/{imdbId}.json`
 
 ```kotlin
-suspend fun fetchCinemetaMeta(imdbId: String, isTvSeries: Boolean): JsonNode? {
+@Serializable
+data class CinemetaMetaResponse(val meta: CinemetaMetaItem? = null)
+
+@Serializable
+data class CinemetaMetaItem(
+    val id: String? = null,
+    val name: String? = null,
+    val poster: String? = null,
+    val background: String? = null,
+    val description: String? = null,
+    val videos: List<CinemetaVideo>? = null
+)
+
+@Serializable
+data class CinemetaVideo(
+    val id: String? = null,
+    val name: String? = null,
+    val title: String? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+    val number: Int? = null,
+    val thumbnail: String? = null,
+    val overview: String? = null,
+    val description: String? = null,
+    val released: String? = null,
+    val firstAired: String? = null
+)
+
+suspend fun fetchCinemetaMeta(imdbId: String, isTvSeries: Boolean): CinemetaMetaItem? {
     val type = if (isTvSeries) "series" else "movie"
     val url = "https://v3-cinemeta.strem.io/meta/$type/$imdbId.json"
     return try {
-        val json = app.get(url, timeout = 5).text
-        mapper.readTree(json)["meta"]
+        app.get(url, timeout = 5).parsedSafe<CinemetaMetaResponse>()?.meta
     } catch (_: Exception) {
         null
     }
@@ -68,24 +99,20 @@ Cinemeta series metadata includes a `videos` array containing official episode n
 
 ```kotlin
 val meta = fetchCinemetaMeta(imdbId, isTvSeries = true)
-val videos = meta?.get("videos")?.toList() ?: emptyList()
+val videos = meta?.videos ?: emptyList()
 
 for ((key, links) in episodeLinksMap) {
     val (season, epNum) = key
     val epMeta = videos.firstOrNull {
-        it["season"]?.asInt() == season && (it["episode"]?.asInt() == epNum || it["number"]?.asInt() == epNum)
+        it.season == season && (it.episode == epNum || it.number == epNum)
     }
 
-    val epName = epMeta?.get("name")?.asText()
-        ?: epMeta?.get("title")?.asText()?.takeIf { it.isNotBlank() }
+    val epName = epMeta?.name
+        ?: epMeta?.title?.takeIf { it.isNotBlank() }
         ?: "Episode $epNum"
-    val epDesc = epMeta?.get("overview")?.asText()
-        ?: epMeta?.get("description")?.asText()
-        ?: ""
-    val epThumb = epMeta?.get("thumbnail")?.asText()?.takeIf { it.isNotBlank() }
-    val epAired = epMeta?.get("released")?.asText()
-        ?: epMeta?.get("firstAired")?.asText()
-    val runtime = epMeta?.get("runtime")?.asText()?.filter { it.isDigit() }?.toIntOrNull()
+    val epDesc = epMeta?.overview ?: epMeta?.description ?: ""
+    val epThumb = epMeta?.thumbnail?.takeIf { it.isNotBlank() }
+    val epAired = epMeta?.released ?: epMeta?.firstAired
 
     episodes.add(
         newEpisode(links.joinToString(";")) {
@@ -94,11 +121,11 @@ for ((key, links) in episodeLinksMap) {
             this.episode = epNum
             this.posterUrl = epThumb ?: poster
             this.description = epDesc
-            this.runTime = runtime
             addDate(epAired)
         }
     )
 }
+```
 ```
 
 ---

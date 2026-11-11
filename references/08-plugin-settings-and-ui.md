@@ -79,10 +79,19 @@ val view = inflater.inflate(layout, container, false)
 If you do not want to bundle custom XML layouts and drawables, build the settings UI purely in Kotlin using native Android `AlertDialog`:
 
 ```kotlin
-openSettings = {
+openSettings = { ctx ->
+    var current: Context? = ctx
+    var activity: AppCompatActivity? = null
+    while (current is ContextWrapper) {
+        if (current is AppCompatActivity) {
+            activity = current
+            break
+        }
+        current = current.baseContext
+    }
+
     activity?.let { act ->
-        val sharedPref = act.getSharedPreferences("MyPlugin_Prefs", Context.MODE_PRIVATE)
-        val isSafeMode = sharedPref.getBoolean("SAFE_MODE_ENABLED", true)
+        val isSafeMode = com.lagradost.cloudstream3.CloudStreamApp.getKey<Boolean>("MY_PLUGIN_SAFE_MODE") ?: true
 
         val checkBox = android.widget.CheckBox(act).apply {
             text = "Family Safe Mode (Block Adult / NSFW Content)"
@@ -94,8 +103,8 @@ openSettings = {
             .setTitle("Plugin Settings")
             .setView(checkBox)
             .setPositiveButton("Save") { dialog, _ ->
-                sharedPref.edit().putBoolean("SAFE_MODE_ENABLED", checkBox.isChecked).apply()
-                android.widget.Toast.makeText(act, "Settings saved", android.widget.Toast.LENGTH_SHORT).show()
+                com.lagradost.cloudstream3.CloudStreamApp.setKey("MY_PLUGIN_SAFE_MODE", checkBox.isChecked)
+                com.lagradost.cloudstream3.CommonActivity.showToast("Settings saved", android.widget.Toast.LENGTH_SHORT)
                 dialog.dismiss()
             }
             .setNegativeButton("Cancel", null)

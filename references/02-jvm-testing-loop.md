@@ -167,7 +167,7 @@ Refer directly to [`templates/ExamplePlugin/src/test/kotlin/com/example/ExampleT
 | `AssertionError: Poster failed to load with HTTP 404/403` | Relative URL not resolved, or CDN requires `Referer`. | Use `CommonUtils.cleanImageUrl(raw, mainUrl)` to resolve absolute URL. |
 | `ClassCastException: ... cannot be cast to MovieLoadResponse` | The movie URL actually points to a TV series or miniseries. | Inspect target breadcrumbs or tags to dynamically route to `newTvSeriesLoadResponse`. |
 | `AssertionError: Series episodes list is empty` | Episodes are rendered via client-side JavaScript or Ajax endpoint. | Inspect DevTools Network tab for `/ajax/episodes/list?id=...` and fetch that endpoint directly. |
-| `AssertionError: Stream link returned HTTP error 403` | Stream CDN requires specific `Referer` or `Origin` headers. | Add `headers = mapOf("Referer" to mainUrl)` to the `ExtractorLink` constructor. |
+| `AssertionError: Stream link returned HTTP error 403` | Stream CDN requires specific `Referer` or `Origin` headers. | Add `this.headers = mapOf("Referer" to mainUrl)` in the `newExtractorLink` builder. |
 | `HTTP 403 Forbidden` / `Just a moment` | Cloudflare challenge or bot protection. | Use `app.get(url, interceptor = CloudflareClearanceInterceptor)` or verify User-Agent. |
 | `Method ... not mocked` | Android framework class called in pure JVM. | Ensure `testOptions { unitTests.isReturnDefaultValues = true }` is in `build.gradle.kts`. |
 | `Extractor returned 0 links` | The iframe host changed domain or token format. | Inspect iframe URL; inherit from built-in extractor or update regex. |

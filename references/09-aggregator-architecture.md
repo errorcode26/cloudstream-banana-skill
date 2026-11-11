@@ -59,8 +59,8 @@ override suspend fun loadLinks(
     val meta = parseMediaMetadata(data)
     val activeProviders = getActiveProviders(meta)
 
-    // Bound concurrency with Semaphore based on device profile (8 on TV, 40 on Phone)
-    val semaphore = Semaphore(DeviceProfile.detect(context).maxConcurrency)
+    // Bound concurrency with Semaphore (e.g. 20 concurrent network workers)
+    val semaphore = Semaphore(20)
 
     activeProviders.forEach { provider ->
         launch(Dispatchers.IO) {

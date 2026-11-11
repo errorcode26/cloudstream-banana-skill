@@ -117,9 +117,9 @@ Step 3: Self-Heal & Propagate
 
 ## 5. Key Upstream Version Rules
 
-* **Jackson JSON Parser**: **NEVER** bump Jackson above `2.13.1` in `build.gradle.kts`. Newer versions introduce bytecode incompatible with older Android devices and FireSticks.
-* **Java Toolchain**: Always keep `JavaLanguageVersion.of(17)` in the root Gradle toolchain.
-* **Bytecode Target**: Pre-release CloudStream targets Java 11 bytecode (`JvmTarget.JVM_11`).
+* **Serialization Standard**: Use `kotlinx.serialization` across all plugins for pure KMP compatibility. (Jackson was historically pinned to `2.13.1` due to older Android limits, but modern upstream plugins use Kotlin Serialization).
+* **Bytecode Target**: Plugins must target Java 1.8 bytecode (`jvmTarget.set(JvmTarget.JVM_1_8) // Required`) as enforced by upstream `recloudstream/TestPlugins` and `recloudstream/extensions`.
+* **Gradle Toolchain**: Pre-release builds use JDK 17 for the build environment.
 
 ---
 
